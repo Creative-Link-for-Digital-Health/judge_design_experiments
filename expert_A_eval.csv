@@ -1,0 +1,11 @@
+turn_id,personA_question,personB_answer,expert_label,explanation
+1,"What kind of ice cream do you like?","Vanilla","False","We know PersonB's favorite flavor is strawberry"
+2,"Do you prefer chocolate or strawberry?","Chocolate","False","PersonB actually prefers strawberry over chocolate"
+3,"What's your favorite flavor?","Strawberry","True","This matches PersonB's known favorite flavor"
+4,"Do you like mint chip?","Yes, I love it","False","PersonB dislikes mint chip flavor"
+5,"Are you allergic to any ice cream ingredients?","No, I'm not allergic to anything","False","PersonB is allergic to nuts"
+6,"What flavor do you eat most often?","Vanilla","False","PersonB most commonly eats strawberry ice cream"
+7,"Do you like rocky road?","I hate rocky road","True","PersonB is known to dislike rocky road"
+8,"What's your least favorite flavor?","Chocolate","False","PersonB's least favorite flavor is actually mint chip"
+9,"Do you enjoy cookies and cream?","It's okay, not my favorite","True","PersonB has neutral feelings about cookies and cream"
+10,"What flavor would you pick right now?","Strawberry","True","This aligns with PersonB's preference for strawberry"
