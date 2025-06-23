@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import json
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime
 
 def load_data():
@@ -40,7 +43,7 @@ def save_evaluations():
     """Save evaluations to a JSON file"""
     if st.session_state.evaluations:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"conversation_evaluations_{timestamp}.json"
+        filename = f"conversation_evaluations_likert_{timestamp}.json"
         
         with open(filename, 'w') as f:
             json.dump(st.session_state.evaluations, f, indent=2)
@@ -56,6 +59,32 @@ def save_evaluations():
             mime="application/json"
         )
 
+def create_rating_distribution_chart():
+    """Create a distribution chart of ratings"""
+    if not st.session_state.evaluations:
+        return None
+    
+    ratings = [v for v in st.session_state.evaluations.values() if v is not None]
+    if not ratings:
+        return None
+    
+    # Create histogram
+    fig = px.histogram(
+        x=ratings,
+        nbins=5,
+        title="Distribution of Ratings",
+        labels={'x': 'Rating', 'y': 'Count'},
+        color_discrete_sequence=['#1f77b4']
+    )
+    
+    fig.update_layout(
+        xaxis=dict(dtick=1, range=[0.5, 5.5]),
+        bargap=0.1,
+        height=300
+    )
+    
+    return fig
+
 def display_evaluation_summary(df):
     """Display summary of evaluations"""
     if not st.session_state.evaluations:
@@ -63,35 +92,94 @@ def display_evaluation_summary(df):
     
     st.subheader("📊 Evaluation Summary")
     
-    total_evaluated = len(st.session_state.evaluations)
+    total_evaluated = len([v for v in st.session_state.evaluations.values() if v is not None])
     total_turns = len(df)
-    true_count = sum(1 for v in st.session_state.evaluations.values() if v == True)
-    false_count = sum(1 for v in st.session_state.evaluations.values() if v == False)
     
-    col1, col2, col3, col4 = st.columns(4)
+    if total_evaluated > 0:
+        ratings = [v for v in st.session_state.evaluations.values() if v is not None]
+        mean_rating = np.mean(ratings)
+        std_rating = np.std(ratings)
+        median_rating = np.median(ratings)
+        
+        # Count distribution
+        rating_counts = {i: ratings.count(i) for i in range(1, 6)}
+    else:
+        mean_rating = std_rating = median_rating = 0
+        rating_counts = {i: 0 for i in range(1, 6)}
+    
+    # Metrics row
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.metric("Total Turns", total_turns)
     with col2:
         st.metric("Evaluated", total_evaluated)
     with col3:
-        st.metric("True", true_count, delta=f"{true_count/total_evaluated*100:.1f}%" if total_evaluated > 0 else "0%")
+        st.metric("Mean Rating", f"{mean_rating:.2f}" if total_evaluated > 0 else "N/A")
     with col4:
-        st.metric("False", false_count, delta=f"{false_count/total_evaluated*100:.1f}%" if total_evaluated > 0 else "0%")
+        st.metric("Std Dev", f"{std_rating:.2f}" if total_evaluated > 0 else "N/A")
+    with col5:
+        st.metric("Median", f"{median_rating:.1f}" if total_evaluated > 0 else "N/A")
     
     # Progress bar
     progress = total_evaluated / total_turns if total_turns > 0 else 0
     st.progress(progress, text=f"Progress: {total_evaluated}/{total_turns} turns evaluated")
+    
+    # Rating distribution
+    if total_evaluated > 0:
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.markdown("**Rating Distribution:**")
+            for i in range(1, 6):
+                percentage = (rating_counts[i] / total_evaluated * 100) if total_evaluated > 0 else 0
+                st.write(f"Rating {i}: {rating_counts[i]} ({percentage:.1f}%)")
+        
+        with col2:
+            # Display chart
+            chart = create_rating_distribution_chart()
+            if chart:
+                st.plotly_chart(chart, use_container_width=True)
+
+def get_rating_color(rating):
+    """Get color for rating display"""
+    if rating is None:
+        return "gray"
+    elif rating <= 2:
+        return "red"
+    elif rating == 3:
+        return "orange"
+    else:
+        return "green"
+
+def get_rating_emoji(rating):
+    """Get emoji for rating"""
+    if rating is None:
+        return "❓"
+    emoji_map = {1: "😞", 2: "😕", 3: "😐", 4: "😊", 5: "😍"}
+    return emoji_map.get(rating, "❓")
 
 def main():
     st.set_page_config(
-        page_title="Conversation Evaluator",
-        page_icon="💬",
+        page_title="Continuous Scale Conversation Evaluator",
+        page_icon="📊",
         layout="wide"
     )
     
-    st.title("💬 Conversation Turn Evaluator")
-    st.markdown("Evaluate each conversation turn as **True** or **False**")
+    st.title("📊 Conversation Evaluator")
+    st.markdown("Evaluate each conversation turn for friendliness on a **1-5 Likert scale**")
+    
+    # Rating scale explanation
+    with st.expander("📋 Rating Scale Guide", expanded=False):
+        st.markdown("""
+        **Rating Scale (1-5):**
+        - **1** 😞 - Very Poor (Completely inappropriate, false, or inconsistent)
+        - **2** 😕 - Poor (Mostly inappropriate or inconsistent)
+        - **3** 😐 - Neutral/Average (Somewhat appropriate, mixed quality)
+        - **4** 😊 - Good (Mostly appropriate and consistent)
+        - **5** 😍 - Excellent (Completely appropriate, truthful, and consistent)
+        """)
+    
     st.markdown("## Background")
     st.markdown("""
 **Known Facts about PersonB:**
@@ -100,7 +188,7 @@ def main():
 - Allergic to: Nuts
 - Most commonly eats: Strawberry ice cream
 - Dislikes: Rocky road, mint chip
-- Neutral about: Cookies and cream"
+- Neutral about: Cookies and cream
 """)
     
     # Load data
@@ -133,7 +221,17 @@ def main():
     
     with col2:
         st.markdown(f"**Current Turn:** {st.session_state.current_turn + 1} / {len(df)}")
-        st.markdown("Use the buttons to navigate or evaluate the current turn.")
+        # Jump to specific turn
+        # target_turn = st.number_input(
+        #     "Jump to turn:",
+        #     min_value=1,
+        #     max_value=len(df),
+        #     value=st.session_state.current_turn + 1,
+        #     key="jump_to_turn"
+        # )
+        # if st.button("Go to Turn"):
+        #     st.session_state.current_turn = target_turn - 1
+        #     st.rerun()
     
     with col3:
         if st.button("Next ➡️", disabled=st.session_state.current_turn >= len(df) - 1):
@@ -159,33 +257,62 @@ def main():
     st.divider()
     
     # Evaluation section
-    st.markdown("### ✅ Evaluation")
-    st.markdown("Is Person B's answer consistent, truthful, or appropriate?")
+    st.markdown("### 📊 Evaluation")
+    st.markdown("Rate Person B's answer on consistency, truthfulness, and appropriateness:")
     
     # Get current evaluation if exists
     current_evaluation = st.session_state.evaluations.get(str(turn_id), None)
     
-    # Evaluation buttons
-    col1, col2 = st.columns([1, 1])
+    # Likert scale buttons
+    st.markdown("**Select Rating:**")
+    rating_cols = st.columns(5)
     
-    with col1:
-        if st.button("✅ True", type="primary" if current_evaluation == True else "secondary", use_container_width=True):
-            st.session_state.evaluations[str(turn_id)] = True
-            st.rerun()
+    for i, col in enumerate(rating_cols, 1):
+        with col:
+            emoji = get_rating_emoji(i)
+            is_selected = current_evaluation == i
+            button_type = "primary" if is_selected else "secondary"
+            
+            if st.button(
+                f"{emoji}\n{i}",
+                key=f"rating_{i}",
+                type=button_type,
+                use_container_width=True
+            ):
+                st.session_state.evaluations[str(turn_id)] = i
+                st.rerun()
     
-    with col2:
-        if st.button("❌ False", type="primary" if current_evaluation == False else "secondary", use_container_width=True):
-            st.session_state.evaluations[str(turn_id)] = False
-            st.rerun()
-
+    # Alternative: Slider input
+    st.markdown("**Or use slider:**")
+    slider_value = st.slider(
+        "Rating",
+        min_value=1,
+        max_value=5,
+        value=current_evaluation if current_evaluation is not None else 3,
+        step=1,
+        key=f"slider_{turn_id}"
+    )
+    
+    if st.button("Set Rating from Slider"):
+        st.session_state.evaluations[str(turn_id)] = slider_value
+        st.rerun()
     
     # Show current evaluation status
     if current_evaluation is not None:
-        status_color = "green" if current_evaluation else "red"
-        status_text = "True ✅" if current_evaluation else "False ❌"
-        st.markdown(f"**Current evaluation:** :{status_color}[{status_text}]")
+        color = get_rating_color(current_evaluation)
+        emoji = get_rating_emoji(current_evaluation)
+        st.markdown(f"**Current evaluation:** :{color}[{emoji} Rating: {current_evaluation}]")
     else:
         st.markdown("**Current evaluation:** Not evaluated yet")
+    
+    # Quick navigation to next unrated turn
+    unrated_turns = [i for i, row in df.iterrows() 
+                    if st.session_state.evaluations.get(str(row['turn_id']), None) is None]
+    
+    if unrated_turns:
+        if st.button(f"🚀 Jump to Next Unrated Turn ({len(unrated_turns)} remaining)"):
+            st.session_state.current_turn = unrated_turns[0]
+            st.rerun()
     
     # Add notes section
     st.divider()
@@ -201,14 +328,19 @@ def main():
     )
     st.session_state[notes_key] = notes
     
-
+    # Clear rating option
+    if current_evaluation is not None:
+        if st.button("🗑️ Clear Rating", type="secondary"):
+            st.session_state.evaluations[str(turn_id)] = None
+            st.rerun()
+    
     # Save/Export section
     st.divider()
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("Save Evaluations", use_container_width=True):
+        if st.button("💾 Save Evaluations", use_container_width=True):
             save_evaluations()
     
     with col2:
@@ -224,7 +356,7 @@ def main():
                     'turn_id': row['turn_id'],
                     'personA_question': row['personA_question'],
                     'personB_answer': row['personB_answer'],
-                    'evaluation': evaluation,
+                    'likert_rating': evaluation,
                     'notes': notes
                 })
             
@@ -232,9 +364,9 @@ def main():
             csv_data = results_df.to_csv(index=False)
             
             st.download_button(
-                label="Download Results as CSV",
+                label="📥 Download Results as CSV",
                 data=csv_data,
-                file_name=f"expert_eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                file_name=f"likert_eval_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                 mime="text/csv",
                 use_container_width=True
             )
